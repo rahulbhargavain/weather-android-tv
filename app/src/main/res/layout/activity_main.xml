@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#1B1F1D"
+    android:padding="32dp">
+
+    <!-- Radar -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Regional radar"
+        android:textColor="#9AA39C"
+        android:textSize="14sp"
+        android:paddingBottom="6dp" />
+
+    <ImageView
+        android:id="@+id/radarImageView"
+        android:layout_width="match_parent"
+        android:layout_height="140dp"
+        android:scaleType="centerCrop"
+        android:background="#232823"
+        android:layout_marginBottom="16dp" />
+
+    <!-- Weather bar -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingBottom="16dp">
+
+        <com.bhimtal.dashboard.WeatherAnimationView
+            android:id="@+id/weatherAnimView"
+            android:layout_width="80dp"
+            android:layout_height="80dp" />
+
+        <TextView
+            android:id="@+id/tempText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:text="--°"
+            android:textSize="48sp"
+            android:textStyle="bold"
+            android:textColor="#F2F1EC"
+            android:fontFamily="sans-serif-light" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="24dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/stationText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Station"
+                android:textSize="16sp"
+                android:textColor="#9AA39C" />
+
+            <TextView
+                android:id="@+id/weatherDetailText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text=""
+                android:textSize="14sp"
+                android:textColor="#F2F1EC" />
+
+            <TextView
+                android:id="@+id/rainChanceText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Rain chance: --"
+                android:textSize="14sp"
+                android:textColor="#6FA8DC" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/lastUpdatedText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="13sp"
+            android:textColor="#9AA39C"
+            android:layout_marginEnd="20dp" />
+
+        <Button
+            android:id="@+id/refreshButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Refresh"
+            android:focusable="true"
+            android:focusableInTouchMode="true" />
+    </LinearLayout>
+
+    <!-- Divider -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="2dp"
+        android:background="#4F7C6B"
+        android:layout_marginBottom="16dp" />
+
+    <!-- News grid: populated programmatically from NEWS_SOURCES in MainActivity.kt.
+         Each card is focusable/clickable so the TV remote's D-pad can reach it,
+         and the ScrollView auto-scrolls to bring focused cards into view. -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <GridLayout
+            android:id="@+id/newsGridContainer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+    </ScrollView>
+
+</LinearLayout>

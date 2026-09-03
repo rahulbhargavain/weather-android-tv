@@ -1,0 +1,15 @@
+# Copy this file to "local.properties" (same folder) and fill in real values.
+# local.properties is gitignored -- it will never be committed, and Android
+# Studio also writes your local SDK path into this same file automatically.
+#
+# PWS_STATION_ID / PWS_API_KEY: your Weather Underground / pwsweather personal
+# weather station ID and API key. Get these from your PWS provider's account
+# dashboard. NEVER commit real values -- treat the API key like a password.
+PWS_STATION_ID=YOUR_STATION_ID
+PWS_API_KEY=YOUR_API_KEY
+
+# Coordinates to center the radar and Open-Meteo forecast on. Decimal degrees.
+# The values below are placeholders (mid-Atlantic, not a real location) --
+# replace with your own station's coordinates.
+LATITUDE=0.0
+LONGITUDE=0.0

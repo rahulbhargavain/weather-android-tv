@@ -1,0 +1,29 @@
+# Secrets -- never commit. See local.properties.example for the template.
+local.properties
+
+# Gradle
+.gradle/
+build/
+app/build/
+*.hprof
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Local build outputs
+*.apk
+*.aab
+local.properties.bak
+
+# Keystores -- if you ever add a release signing config, never commit these
+*.jks
+*.keystore
+
+# Python (backtest script)
+__pycache__/
+*.pyc
