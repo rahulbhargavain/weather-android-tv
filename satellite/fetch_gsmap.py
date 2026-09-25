@@ -25,15 +25,11 @@ this genuinely has to run on your own machine, not here. One-time setup:
 If your Earth Engine account requires a Cloud project (most do now),
 pass it with --ee-project your-project-id.
 
-VERIFY BEFORE RELYING ON THIS: GSMAP_COLLECTION_ID and BAND_NAME below
-were taken from Earth Engine catalog search results without live access
-to confirm them against the current catalog (this script was written in
-a sandbox with no network path to Earth Engine or its docs). Cross-check
-both against https://developers.google.com/earth-engine/datasets/catalog
-(search "GSMaP") before your first real run -- collection IDs and band
-names occasionally change between dataset versions, and a stale ID fails
-loudly (ee.ImageCollection raises), not silently, so this is a one-time
-five-minute check, not a recurring risk.
+CATALOG CHECK: GSMAP_COLLECTION_ID and BAND_NAME below were checked
+against the Earth Engine catalog page
+https://developers.google.com/earth-engine/datasets/catalog/JAXA_GPM_L3_GSMaP_v8_operational
+in September 2026. If Earth Engine publishes a newer GSMaP version, update
+the ID; a stale ID fails loudly (ee.ImageCollection raises), not silently.
 
 OUTPUT: a CSV with columns time, gsmap_rain_rate_mm_per_hr -- one row per
 GSMaP frame overlapping [start_date, end_date). Point this at
@@ -54,8 +50,10 @@ except ImportError:
     print("Missing dependency. Run: pip install earthengine-api", file=sys.stderr)
     sys.exit(1)
 
-# See "VERIFY BEFORE RELYING ON THIS" in the module docstring.
-GSMAP_COLLECTION_ID = "JAXA/GPM_L3/GSMaP_v7/operational"
+# See "CATALOG CHECK" in the module docstring.
+# v8 is the current operational product (1998-present). v7 stopped producing
+# data in June 2026, and the old "GSMaP_v7" spelling was never a valid ID.
+GSMAP_COLLECTION_ID = "JAXA/GPM_L3/GSMaP/v8/operational"
 BAND_NAME = "hourlyPrecipRate"
 POINT_SAMPLE_SCALE_M = 11000  # GSMaP's native ~0.1 degree grid is roughly 11km
 

@@ -139,8 +139,12 @@ object RainHeuristic {
     fun dewPointSpreadC(tempC: Double, humidityPercent: Double): Double? =
         dewPointC(tempC, humidityPercent)?.let { tempC - it }
 
+    // WMO codes: 51-67 drizzle/rain, 71-77 snow, 80-82 rain showers,
+    // 85-86 snow showers, 95-99 thunderstorm. Snow counts as precipitation
+    // too -- there's no snow icon, so it's drawn as RAINY rather than
+    // falling through to SUNNY.
     private fun isActivePrecipCode(code: Int?) =
-        code != null && (code in 51..67 || code in 80..82 || code in 95..99)
+        code != null && (code in 51..67 || code in 71..77 || code in 80..86 || code in 95..99)
 
     private fun isFogCode(code: Int?) = code != null && code in 45..48
     private fun isCloudCode(code: Int?) = code != null && code in 1..3

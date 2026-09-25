@@ -64,6 +64,16 @@ class RainHeuristicTest {
             SkyCondition.RAINY,
         ),
         Case(
+            "snow weather code is precipitation, not sunny",
+            input(popPercent = 5, weatherCode = 73, humidityPercent = 40.0),
+            SkyCondition.RAINY,
+        ),
+        Case(
+            "snow showers weather code is precipitation, not sunny",
+            input(popPercent = 5, weatherCode = 85, humidityPercent = 40.0),
+            SkyCondition.RAINY,
+        ),
+        Case(
             "high pop alone forces rainy despite a clear code",
             input(popPercent = 75, weatherCode = 0, humidityPercent = 40.0),
             SkyCondition.RAINY,

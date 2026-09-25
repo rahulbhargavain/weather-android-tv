@@ -1,1 +1,5 @@
 * text=auto eol=lf
+
+# Windows scripts need CRLF; the wrapper jar is binary.
+*.bat text eol=crlf
+*.jar binary

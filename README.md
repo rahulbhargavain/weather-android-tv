@@ -30,12 +30,12 @@ To customize news sources, edit the `NEWS_SOURCES` list in [`MainActivity.kt`](a
 
 ## Tests & Backtesting
 
-- Run unit tests with `./gradlew testDebugUnitTest` to test the heuristic logic.
+- Run unit tests with `./gradlew testDebugUnitTest` (`gradlew.bat testDebugUnitTest` on Windows) to test the heuristic logic. The build needs JDK 17.
 - A standalone backtesting script is available in the `backtest/` directory to evaluate the `RainHeuristic` rules against historical weather data.
 
 ## Satellite Data & Future Predictors
 
-`satellite/fetch_gsmap.py` — pull GSMaP rain-rate estimates for your exact coordinates. Setup is `pip install earthengine-api` then `earthengine authenticate` (one-time browser login). Before your first real run, spend five minutes cross-checking `GSMAP_COLLECTION_ID` and `BAND_NAME` against the current Earth Engine catalog page — I wrote those from search results, not a live catalog check, since this sandbox has no path to Earth Engine. It fails loudly if either is stale, not silently.
+`satellite/fetch_gsmap.py` — pull GSMaP rain-rate estimates for your exact coordinates. Setup is `pip install earthengine-api` then `earthengine authenticate` (one-time browser login). The script queries `JAXA/GPM_L3/GSMaP/v8/operational` (band `hourlyPrecipRate`), checked against the Earth Engine catalog in September 2026. It fails loudly, not silently, if the ID ever goes stale.
 
 Once you've pulled some real GSMaP rows, the natural next move is feeding them into `backtest_rain_heuristic.py` as a ground-truth cross-check alongside ERA5, or eventually wiring a distilled version into `RainHeuristic` the same way `radar_echo_near_station` was added — happy to help with either when you've got data in hand.
 
