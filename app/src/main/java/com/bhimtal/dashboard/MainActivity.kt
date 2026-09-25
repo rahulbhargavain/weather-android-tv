@@ -1,10 +1,8 @@
 package com.bhimtal.dashboard
 
-import android.graphics.Bitmap
+import android.annotation.SuppressLint
 import android.graphics.BitmapFactory
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
@@ -13,9 +11,10 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.Gravity
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.GridLayout
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -39,7 +38,10 @@ import kotlin.math.tan
  * Bhimtal Dashboard
  *
  * A single-screen Android TV dashboard showing:
- *  - A regional radar image, from RainViewer (free, no API key needed)
+ *  - The Himalaya Nowcast Atlas (https://rahulbhargavain.github.io/himalaya-nowcast-atlas/)
+ *    in TV mode: radar extrapolated 8 hours ahead, pressure, snow line,
+ *    airport reports and live fires, looping in a WebView. The atlas is
+ *    rebuilt every 2 hours by its own GitHub Actions workflow.
  *  - Live conditions from your personal weather station (PWS API), an
  *    animated sun/cloud/rain icon, and today's rain-chance from Open-Meteo
  *    (free, no API key needed), combined by RainHeuristic (see that file)
@@ -49,7 +51,7 @@ import kotlin.math.tan
  *    select on a card to expand it from 4 headlines to 10.
  *
  * CONFIGURATION: the PWS station ID, PWS API key, and the latitude/
- * longitude to center the radar/forecast on are NOT in this file. They are
+ * longitude for the forecast and radar-echo check are NOT in this file. They are
  * read from BuildConfig fields generated from local.properties, which is
  * gitignored -- see README.md, "Configuration" section, before building.
  */
@@ -64,14 +66,20 @@ class MainActivity : AppCompatActivity() {
         private const val HEADLINES_COLLAPSED = 4
         private const val HEADLINES_EXPANDED = 10
 
-        // RainViewer tiles: zoom levels above 7 are not available on the free tier.
+        // The atlas in TV mode. It changes every 2 hours; reloading this often
+        // is cheap because the WebView revalidates against its HTTP cache.
+        private const val ATLAS_URL = "https://rahulbhargavain.github.io/himalaya-nowcast-atlas/?tv"
+        private const val ATLAS_RELOAD_MS = 30 * 60 * 1000L
+
+        // RainViewer tiles for the radar-echo check: zoom levels above 7 are
+        // not available on the free tier.
         private const val RADAR_ZOOM = 6
         private const val RADAR_TILE_PX = 256
-        private const val GRID_COLUMNS = 5
+        private const val GRID_COLUMNS = 1
 
         // RainViewer tiles are transparent where there's no precipitation and
         // colored (non-transparent) where there is -- so "is it raining nearby"
-        // reduces to "is any pixel near the station marker non-transparent
+        // reduces to "is any pixel near the station non-transparent
         // above a noise floor". At RADAR_ZOOM=6, each tile is ~620km across
         // RADAR_TILE_PX pixels, so a 15px sampling radius is roughly a 35km
         // radius around the station -- a "nearby storm cell" scale, not a
@@ -89,9 +97,6 @@ class MainActivity : AppCompatActivity() {
         private val NEWS_SOURCES = listOf(
             NewsSource("The New York Times", "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml"),
             NewsSource("BBC News", "https://feeds.bbci.co.uk/news/rss.xml"),
-            NewsSource("Science & Environment", "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml"),
-            NewsSource("Business (Global)", "https://feeds.bbci.co.uk/news/business/rss.xml"),
-            NewsSource("Nature", "https://www.nature.com/nature.rss")
         )
     }
 
@@ -102,7 +107,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var rainChanceText: TextView
     private lateinit var lastUpdatedText: TextView
     private lateinit var refreshButton: Button
-    private lateinit var radarImageView: ImageView
+    private lateinit var atlasWebView: WebView
+    private var atlasLoadedAtMs = 0L
     private lateinit var newsGridContainer: GridLayout
 
     // Parallel arrays, indexed the same as NEWS_SOURCES.
@@ -145,25 +151,54 @@ class MainActivity : AppCompatActivity() {
         rainChanceText = findViewById(R.id.rainChanceText)
         lastUpdatedText = findViewById(R.id.lastUpdatedText)
         refreshButton = findViewById(R.id.refreshButton)
-        radarImageView = findViewById(R.id.radarImageView)
+        atlasWebView = findViewById(R.id.atlasWebView)
         newsGridContainer = findViewById(R.id.newsGridContainer)
 
+        setupAtlas()
         buildNewsGrid()
 
-        refreshButton.setOnClickListener { refreshAll() }
+        refreshButton.setOnClickListener {
+            loadAtlas()
+            refreshAll()
+        }
     }
 
     // Refresh only while the dashboard is visible; going to the background
     // (Home, screensaver, another app) stops the periodic network fetches.
     override fun onStart() {
         super.onStart()
+        atlasWebView.onResume()
         handler.removeCallbacks(refreshRunnable)
         handler.post(refreshRunnable)
     }
 
     override fun onStop() {
         super.onStop()
+        atlasWebView.onPause()
         handler.removeCallbacks(refreshRunnable)
+    }
+
+    override fun onDestroy() {
+        atlasWebView.destroy()
+        super.onDestroy()
+    }
+
+    @SuppressLint("SetJavaScriptEnabled") // our own page, which needs JS to draw the map
+    private fun setupAtlas() {
+        atlasWebView.setBackgroundColor(Color.parseColor("#1B1F1D"))
+        atlasWebView.settings.javaScriptEnabled = true
+        atlasWebView.settings.domStorageEnabled = true
+        // Keep any navigation inside the view rather than opening a browser.
+        atlasWebView.webViewClient = WebViewClient()
+        // The atlas animates by itself; keep D-pad focus on the news cards and Refresh.
+        atlasWebView.isFocusable = false
+        atlasWebView.isFocusableInTouchMode = false
+        loadAtlas()
+    }
+
+    private fun loadAtlas() {
+        atlasWebView.loadUrl(ATLAS_URL)
+        atlasLoadedAtMs = System.currentTimeMillis()
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
@@ -275,7 +310,7 @@ class MainActivity : AppCompatActivity() {
         val weather = fetchWeather()
         val weatherFetchedAtMs = System.currentTimeMillis()
         val forecast = fetchForecast()
-        val radarFetch = fetchRadarBitmap()
+        val radarEcho = fetchRadarEchoNearStation()
         val newsResults = NEWS_SOURCES.map { fetchRss(it.feedUrl, HEADLINES_EXPANDED) }
 
         val previousTempIsFresh = weatherFetchedAtMs - previousStationTempAtMs <= MAX_PREVIOUS_TEMP_AGE_MS
@@ -288,7 +323,7 @@ class MainActivity : AppCompatActivity() {
                 humidityPercent = weather?.humidity,
                 stationTempC = weather?.tempC,
                 previousStationTempC = if (previousTempIsFresh) previousStationTempC else null,
-                radarEchoNearStation = radarFetch?.echoNearStation,
+                radarEchoNearStation = radarEcho,
             ),
         )
         previousStationPrecipTotalMm = weather?.precipTotalMm ?: previousStationPrecipTotalMm
@@ -305,7 +340,7 @@ class MainActivity : AppCompatActivity() {
             weatherAnimView.setCondition(toAnimationCondition(heuristicResult.condition))
             rainChanceText.text = heuristicResult.adjustedPopPercent?.let { "Rain chance: $it%" }
                 ?: "Rain chance: --"
-            radarFetch?.bitmap?.let { radarImageView.setImageBitmap(it) }
+            if (System.currentTimeMillis() - atlasLoadedAtMs >= ATLAS_RELOAD_MS) loadAtlas()
 
             for (i in NEWS_SOURCES.indices) {
                 fullHeadlines[i] = newsResults[i]
@@ -461,27 +496,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ---------------------------------------------------------------------
-    // RainViewer radar image
+    // RainViewer radar echo near the station (feeds RainHeuristic only; the
+    // map on screen is the Himalaya Nowcast Atlas)
     // ---------------------------------------------------------------------
 
-    data class RadarFetchResult(val bitmap: Bitmap?, val echoNearStation: Boolean)
-
-    /** True if any sampled pixel's alpha exceeds the noise floor -- i.e. radar shows real echo nearby. */
-    private fun hasRadarEchoNear(bitmap: Bitmap, centerX: Int, centerY: Int): Boolean {
-        val left = (centerX - RADAR_ECHO_SAMPLE_RADIUS_PX).coerceAtLeast(0)
-        val right = (centerX + RADAR_ECHO_SAMPLE_RADIUS_PX).coerceAtMost(bitmap.width - 1)
-        val top = (centerY - RADAR_ECHO_SAMPLE_RADIUS_PX).coerceAtLeast(0)
-        val bottom = (centerY + RADAR_ECHO_SAMPLE_RADIUS_PX).coerceAtMost(bitmap.height - 1)
-        for (y in top..bottom) {
-            for (x in left..right) {
-                if (Color.alpha(bitmap.getPixel(x, y)) > RADAR_ECHO_ALPHA_THRESHOLD) return true
-            }
-        }
-        return false
-    }
-
-    /** Downloads a 3x3 grid of RainViewer tiles around BuildConfig.LATITUDE/LONGITUDE and stitches them. */
-    private fun fetchRadarBitmap(): RadarFetchResult? {
+    /**
+     * True if RainViewer's latest radar frame shows echo within
+     * RADAR_ECHO_SAMPLE_RADIUS_PX of the station, false if it shows none,
+     * null if nothing could be fetched. Only the one to four tiles under
+     * the sampling box are downloaded, and nothing is drawn.
+     */
+    private fun fetchRadarEchoNearStation(): Boolean? {
         return try {
             val apiUrl = URL("https://api.rainviewer.com/public/weather-maps.json")
             val apiConn = apiUrl.openConnection() as HttpURLConnection
@@ -494,72 +519,45 @@ class MainActivity : AppCompatActivity() {
             val host = apiJson.getString("host")
             val pastFrames = apiJson.getJSONObject("radar").getJSONArray("past")
             if (pastFrames.length() == 0) return null
-            val latestFrame = pastFrames.getJSONObject(pastFrames.length() - 1)
-            val path = latestFrame.getString("path")
+            val path = pastFrames.getJSONObject(pastFrames.length() - 1).getString("path")
 
-            val n = 1 shl RADAR_ZOOM
+            // Station position in global pixel coordinates at RADAR_ZOOM.
+            val worldPx = (1 shl RADAR_ZOOM) * RADAR_TILE_PX
             val latRad = Math.toRadians(BuildConfig.LATITUDE)
-            val xTileExact = (BuildConfig.LONGITUDE + 180.0) / 360.0 * n
-            val yTileExact = (1.0 - ln(tan(latRad) + 1.0 / cos(latRad)) / Math.PI) / 2.0 * n
-            val centerX = xTileExact.toInt()
-            val centerY = yTileExact.toInt()
+            val px = ((BuildConfig.LONGITUDE + 180.0) / 360.0 * worldPx).toInt()
+            val py = ((1.0 - ln(tan(latRad) + 1.0 / cos(latRad)) / Math.PI) / 2.0 * worldPx).toInt()
+            val r = RADAR_ECHO_SAMPLE_RADIUS_PX
 
-            val gridSize = 3
-            val stitched = Bitmap.createBitmap(
-                RADAR_TILE_PX * gridSize,
-                RADAR_TILE_PX * gridSize,
-                Bitmap.Config.ARGB_8888,
-            )
-            val canvas = Canvas(stitched)
-
-            for (dx in -1..1) {
-                for (dy in -1..1) {
-                    val tx = centerX + dx
-                    val ty = centerY + dy
-                    try {
-                        val tileUrl = URL("$host$path/$RADAR_TILE_PX/$RADAR_ZOOM/$tx/$ty/2/1_1.png")
-                        val tileConn = tileUrl.openConnection() as HttpURLConnection
-                        tileConn.connectTimeout = 10000
-                        tileConn.readTimeout = 10000
-                        val bmp = BitmapFactory.decodeStream(tileConn.inputStream)
-                        tileConn.disconnect()
-                        if (bmp != null) {
-                            canvas.drawBitmap(
-                                bmp,
-                                ((dx + 1) * RADAR_TILE_PX).toFloat(),
-                                ((dy + 1) * RADAR_TILE_PX).toFloat(),
-                                null,
-                            )
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Radar tile fetch failed for ($tx,$ty)", e)
+            val tiles = linkedSetOf<Pair<Int, Int>>()
+            for (x in listOf(px - r, px + r)) {
+                for (y in listOf(py - r, py + r)) tiles.add(Pair(x / RADAR_TILE_PX, y / RADAR_TILE_PX))
+            }
+            var fetched = 0
+            for ((tx, ty) in tiles) {
+                val bmp = try {
+                    val tileConn = URL("$host$path/$RADAR_TILE_PX/$RADAR_ZOOM/$tx/$ty/2/1_1.png").openConnection() as HttpURLConnection
+                    tileConn.connectTimeout = 10000
+                    tileConn.readTimeout = 10000
+                    BitmapFactory.decodeStream(tileConn.inputStream).also { tileConn.disconnect() }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Radar tile fetch failed for ($tx,$ty)", e)
+                    null
+                } ?: continue
+                fetched++
+                // The part of the sampling box that falls inside this tile.
+                val x0 = (px - r - tx * RADAR_TILE_PX).coerceIn(0, bmp.width - 1)
+                val x1 = (px + r - tx * RADAR_TILE_PX).coerceIn(0, bmp.width - 1)
+                val y0 = (py - r - ty * RADAR_TILE_PX).coerceIn(0, bmp.height - 1)
+                val y1 = (py + r - ty * RADAR_TILE_PX).coerceIn(0, bmp.height - 1)
+                for (y in y0..y1) {
+                    for (x in x0..x1) {
+                        if (Color.alpha(bmp.getPixel(x, y)) > RADAR_ECHO_ALPHA_THRESHOLD) return true
                     }
                 }
             }
-
-            // Mark the station's location on the stitched image.
-            val markerX = RADAR_TILE_PX + (xTileExact - centerX) * RADAR_TILE_PX
-            val markerY = RADAR_TILE_PX + (yTileExact - centerY) * RADAR_TILE_PX
-            val markerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.parseColor("#E8A33D")
-                style = Paint.Style.FILL
-            }
-            val markerOutline = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.WHITE
-                style = Paint.Style.STROKE
-                strokeWidth = 3f
-            }
-
-            // Sample for echo BEFORE drawing the marker dot on top -- otherwise
-            // the marker's own opaque pixels would trivially count as "echo".
-            val echoNearStation = hasRadarEchoNear(stitched, markerX.toInt(), markerY.toInt())
-
-            canvas.drawCircle(markerX.toFloat(), markerY.toFloat(), 9f, markerPaint)
-            canvas.drawCircle(markerX.toFloat(), markerY.toFloat(), 9f, markerOutline)
-
-            RadarFetchResult(stitched, echoNearStation)
+            if (fetched == 0) null else false
         } catch (e: Exception) {
-            Log.e(TAG, "Radar fetch failed", e)
+            Log.e(TAG, "Radar echo fetch failed", e)
             null
         }
     }

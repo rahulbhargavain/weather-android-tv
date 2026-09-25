@@ -6,23 +6,6 @@
     android:background="#1B1F1D"
     android:padding="32dp">
 
-    <!-- Radar -->
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Regional radar"
-        android:textColor="#9AA39C"
-        android:textSize="14sp"
-        android:paddingBottom="6dp" />
-
-    <ImageView
-        android:id="@+id/radarImageView"
-        android:layout_width="match_parent"
-        android:layout_height="140dp"
-        android:scaleType="centerCrop"
-        android:background="#232823"
-        android:layout_marginBottom="16dp" />
-
     <!-- Weather bar -->
     <LinearLayout
         android:layout_width="match_parent"
@@ -106,20 +89,38 @@
         android:background="#4F7C6B"
         android:layout_marginBottom="16dp" />
 
-    <!-- News grid: populated programmatically from NEWS_SOURCES in MainActivity.kt.
-         Each card is focusable/clickable so the TV remote's D-pad can reach it,
-         and the ScrollView auto-scrolls to bring focused cards into view. -->
-    <ScrollView
+    <!-- Atlas (left) and news (right) -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:fillViewport="true">
+        android:orientation="horizontal">
 
-        <GridLayout
-            android:id="@+id/newsGridContainer"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+        <!-- Himalaya Nowcast Atlas in TV mode (loaded in MainActivity). -->
+        <WebView
+            android:id="@+id/atlasWebView"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="2"
+            android:layout_marginEnd="16dp"
+            android:background="#1B1F1D"
+            android:focusable="false" />
 
-    </ScrollView>
+        <!-- News cards: populated programmatically from NEWS_SOURCES in MainActivity.kt.
+             Each card is focusable/clickable so the TV remote's D-pad can reach it,
+             and the ScrollView auto-scrolls to bring focused cards into view. -->
+        <ScrollView
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:fillViewport="true">
+
+            <GridLayout
+                android:id="@+id/newsGridContainer"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+        </ScrollView>
+    </LinearLayout>
 
 </LinearLayout>
