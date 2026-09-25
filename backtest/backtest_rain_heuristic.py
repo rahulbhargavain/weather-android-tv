@@ -138,7 +138,8 @@ class HeuristicResult:
 
 
 def _is_active_precip_code(code: Optional[int]) -> bool:
-    return code is not None and (51 <= code <= 67 or 80 <= code <= 82 or 95 <= code <= 99)
+    # Mirrors RainHeuristic.kt: rain/drizzle, snow, rain and snow showers, thunderstorm.
+    return code is not None and (51 <= code <= 67 or 71 <= code <= 77 or 80 <= code <= 86 or 95 <= code <= 99)
 
 
 def _is_fog_code(code: Optional[int]) -> bool:
@@ -343,12 +344,24 @@ def run(lat: float, lon: float, start_date: str, end_date: str) -> None:
     # ERA5's own temperature as an approximate stand-in for station temperature
     # (see module docstring point 3) -- keyed by time so it aligns even if the
     # forecast and truth series don't start at exactly the same hour.
+    #
+    # NO LOOKAHEAD: Open-Meteo's hourly `precipitation` at time t is the total
+    # for the PRECEDING hour (t-1h, t], while temperature_2m at t is an
+    # instantaneous reading taken at the END of that hour -- i.e. after any
+    # rain has already cooled the air. Feeding temp(t) vs temp(t-1) into the
+    # rule would let it see the rain it is supposed to predict. Instead the
+    # "current" station reading is temp(t-1h), the last one available at the
+    # start of the hour being scored, and the "previous" one is temp(t-2h).
     truth_by_time = dict(zip(truth_times, precips))
     temp_by_time = dict(zip(truth_times, truth_temps))
     sorted_truth_times = sorted(temp_by_time.keys())
-    previous_temp_by_time = {
+    current_temp_by_time = {
         sorted_truth_times[idx]: temp_by_time[sorted_truth_times[idx - 1]]
         for idx in range(1, len(sorted_truth_times))
+    }
+    previous_temp_by_time = {
+        sorted_truth_times[idx]: temp_by_time[sorted_truth_times[idx - 2]]
+        for idx in range(2, len(sorted_truth_times))
     }
 
     new_predictions, new_probs, old_predictions, actuals, rule_fires = [], [], [], [], {}
@@ -360,7 +373,7 @@ def run(lat: float, lon: float, start_date: str, end_date: str) -> None:
         matched += 1
         actual_rained = actual_precip >= RAIN_THRESHOLD_MM
 
-        station_temp = temp_by_time.get(t)
+        station_temp = current_temp_by_time.get(t)
         previous_station_temp = previous_temp_by_time.get(t)
         result = evaluate(
             HeuristicInput(

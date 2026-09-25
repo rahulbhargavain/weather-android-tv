@@ -29,7 +29,7 @@ import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.TimeZone
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.math.cos
 import kotlin.math.ln
@@ -69,6 +69,22 @@ class MainActivity : AppCompatActivity() {
         private const val RADAR_TILE_PX = 256
         private const val GRID_COLUMNS = 5
 
+        // RainViewer tiles are transparent where there's no precipitation and
+        // colored (non-transparent) where there is -- so "is it raining nearby"
+        // reduces to "is any pixel near the station marker non-transparent
+        // above a noise floor". At RADAR_ZOOM=6, each tile is ~620km across
+        // RADAR_TILE_PX pixels, so a 15px sampling radius is roughly a 35km
+        // radius around the station -- a "nearby storm cell" scale, not a
+        // "somewhere in the region" scale.
+        private const val RADAR_ECHO_SAMPLE_RADIUS_PX = 15
+        private const val RADAR_ECHO_ALPHA_THRESHOLD = 40 // out of 255; filters faint rendering/compression noise
+
+        // RainHeuristic's rapid-cooling rule is a rate calibrated to one
+        // REFRESH_INTERVAL_MS. A previous reading older than this (a failed
+        // fetch in between, or the app coming back from the background) would
+        // stretch the window and is dropped instead of compared against.
+        private const val MAX_PREVIOUS_TEMP_AGE_MS = REFRESH_INTERVAL_MS * 3 / 2
+
         // Edit this list to add, remove, or reorder news sources.
         private val NEWS_SOURCES = listOf(
             NewsSource("The New York Times", "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml"),
@@ -104,6 +120,11 @@ class MainActivity : AppCompatActivity() {
     // the Activity boundary, not inside RainHeuristic.
     private var previousStationPrecipTotalMm: Double? = null
     private var previousStationTempC: Double? = null
+    private var previousStationTempAtMs: Long = 0L
+
+    // Only one refresh runs at a time: the refresh button and the periodic
+    // runnable would otherwise race on the previous* fields above.
+    private val refreshInProgress = AtomicBoolean(false)
 
     private val handler = Handler(Looper.getMainLooper())
     private val refreshRunnable = object : Runnable {
@@ -130,12 +151,18 @@ class MainActivity : AppCompatActivity() {
         buildNewsGrid()
 
         refreshButton.setOnClickListener { refreshAll() }
+    }
 
+    // Refresh only while the dashboard is visible; going to the background
+    // (Home, screensaver, another app) stops the periodic network fetches.
+    override fun onStart() {
+        super.onStart()
+        handler.removeCallbacks(refreshRunnable)
         handler.post(refreshRunnable)
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
+    override fun onStop() {
+        super.onStop()
         handler.removeCallbacks(refreshRunnable)
     }
 
@@ -231,43 +258,62 @@ class MainActivity : AppCompatActivity() {
 
     /** Kicks off all network fetches on a background thread, then updates the UI. */
     private fun refreshAll() {
+        if (!refreshInProgress.compareAndSet(false, true)) {
+            Log.d(TAG, "Refresh already in progress, skipping")
+            return
+        }
         Thread {
-            val weather = fetchWeather()
-            val forecast = fetchForecast()
-            val radarFetch = fetchRadarBitmap()
-            val newsResults = NEWS_SOURCES.map { fetchRss(it.feedUrl, HEADLINES_EXPANDED) }
-
-            val heuristicResult = RainHeuristic.evaluate(
-                HeuristicInput(
-                    popPercent = forecast?.popPercent,
-                    weatherCode = forecast?.weatherCode,
-                    stationPrecipTotalMm = weather?.precipTotalMm,
-                    previousStationPrecipTotalMm = previousStationPrecipTotalMm,
-                    humidityPercent = weather?.humidity,
-                    stationTempC = weather?.tempC,
-                    previousStationTempC = previousStationTempC,
-                    radarEchoNearStation = radarFetch?.echoNearStation,
-                ),
-            )
-            previousStationPrecipTotalMm = weather?.precipTotalMm ?: previousStationPrecipTotalMm
-            previousStationTempC = weather?.tempC ?: previousStationTempC
-            Log.d(TAG, "Rain heuristic: ${heuristicResult.condition}, reasoning: ${heuristicResult.reasoning}")
-
-            handler.post {
-                updateWeatherUI(weather)
-                weatherAnimView.setCondition(toAnimationCondition(heuristicResult.condition))
-                rainChanceText.text = heuristicResult.adjustedPopPercent?.let { "Rain chance: $it%" }
-                    ?: "Rain chance: --"
-                radarFetch?.bitmap?.let { radarImageView.setImageBitmap(it) }
-
-                for (i in NEWS_SOURCES.indices) {
-                    fullHeadlines[i] = newsResults[i]
-                    renderCard(i)
-                }
-
-                lastUpdatedText.text = "Updated " + SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
+            try {
+                refreshAllBlocking()
+            } finally {
+                refreshInProgress.set(false)
             }
         }.start()
+    }
+
+    private fun refreshAllBlocking() {
+        val weather = fetchWeather()
+        val weatherFetchedAtMs = System.currentTimeMillis()
+        val forecast = fetchForecast()
+        val radarFetch = fetchRadarBitmap()
+        val newsResults = NEWS_SOURCES.map { fetchRss(it.feedUrl, HEADLINES_EXPANDED) }
+
+        val previousTempIsFresh = weatherFetchedAtMs - previousStationTempAtMs <= MAX_PREVIOUS_TEMP_AGE_MS
+        val heuristicResult = RainHeuristic.evaluate(
+            HeuristicInput(
+                popPercent = forecast?.popPercent,
+                weatherCode = forecast?.weatherCode,
+                stationPrecipTotalMm = weather?.precipTotalMm,
+                previousStationPrecipTotalMm = previousStationPrecipTotalMm,
+                humidityPercent = weather?.humidity,
+                stationTempC = weather?.tempC,
+                previousStationTempC = if (previousTempIsFresh) previousStationTempC else null,
+                radarEchoNearStation = radarFetch?.echoNearStation,
+            ),
+        )
+        previousStationPrecipTotalMm = weather?.precipTotalMm ?: previousStationPrecipTotalMm
+        // Unlike the precipitation total (any increase means rain fell at some
+        // point), the temperature comparison is a rate, so a failed fetch
+        // clears the previous reading rather than keeping an old one around.
+        previousStationTempC = weather?.tempC
+        previousStationTempAtMs = weatherFetchedAtMs
+        Log.d(TAG, "Rain heuristic: ${heuristicResult.condition}, reasoning: ${heuristicResult.reasoning}")
+
+        handler.post {
+            if (isDestroyed) return@post
+            updateWeatherUI(weather)
+            weatherAnimView.setCondition(toAnimationCondition(heuristicResult.condition))
+            rainChanceText.text = heuristicResult.adjustedPopPercent?.let { "Rain chance: $it%" }
+                ?: "Rain chance: --"
+            radarFetch?.bitmap?.let { radarImageView.setImageBitmap(it) }
+
+            for (i in NEWS_SOURCES.indices) {
+                fullHeadlines[i] = newsResults[i]
+                renderCard(i)
+            }
+
+            lastUpdatedText.text = "Updated " + SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
+        }
     }
 
     private fun toAnimationCondition(condition: SkyCondition): WeatherAnimationView.Condition = when (condition) {
@@ -374,7 +420,8 @@ class MainActivity : AppCompatActivity() {
         return try {
             val url = URL(
                 "https://api.open-meteo.com/v1/forecast?latitude=${BuildConfig.LATITUDE}&longitude=${BuildConfig.LONGITUDE}" +
-                    "&hourly=precipitation_probability,weathercode&timezone=auto&forecast_days=1",
+                    "&hourly=precipitation_probability,weathercode&timezone=auto&forecast_days=1" +
+                    "&timeformat=unixtime",
             )
             val conn = url.openConnection() as HttpURLConnection
             conn.connectTimeout = 10000
@@ -388,16 +435,17 @@ class MainActivity : AppCompatActivity() {
             val pops = hourly.getJSONArray("precipitation_probability")
             val codes = hourly.getJSONArray("weathercode")
 
-            val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:00", Locale.US)
-            sdf.timeZone = TimeZone.getTimeZone("Asia/Kolkata")
-            val nowFormatted = sdf.format(Date())
-
-            var index = 0
-            for (i in 0 until times.length()) {
-                if (times.getString(i) == nowFormatted) {
-                    index = i
-                    break
-                }
+            // Times come back as Unix seconds (timeformat=unixtime), so the
+            // current hour is found without depending on the device's or the
+            // station's time zone. Each entry covers [time, time + 1h).
+            val nowSec = System.currentTimeMillis() / 1000
+            val index = (0 until times.length()).firstOrNull { i ->
+                val start = times.getLong(i)
+                nowSec >= start && nowSec < start + 3600
+            }
+            if (index == null) {
+                Log.w(TAG, "Forecast has no entry for the current hour")
+                return null
             }
 
             val pop = pops.optInt(index, -1)
@@ -417,16 +465,6 @@ class MainActivity : AppCompatActivity() {
     // ---------------------------------------------------------------------
 
     data class RadarFetchResult(val bitmap: Bitmap?, val echoNearStation: Boolean)
-
-    // RainViewer tiles are transparent where there's no precipitation and
-    // colored (non-transparent) where there is -- so "is it raining nearby"
-    // reduces to "is any pixel near the station marker non-transparent
-    // above a noise floor". At RADAR_ZOOM=6, each tile is ~620km across
-    // RADAR_TILE_PX pixels, so a 15px sampling radius is roughly a 35km
-    // radius around the station -- a "nearby storm cell" scale, not a
-    // "somewhere in the region" scale.
-    private const val RADAR_ECHO_SAMPLE_RADIUS_PX = 15
-    private const val RADAR_ECHO_ALPHA_THRESHOLD = 40 // out of 255; filters faint rendering/compression noise
 
     /** True if any sampled pixel's alpha exceeds the noise floor -- i.e. radar shows real echo nearby. */
     private fun hasRadarEchoNear(bitmap: Bitmap, centerX: Int, centerY: Int): Boolean {

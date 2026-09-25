@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android TV home-screen banner (320x180dp). Sun behind a cloud, in the
+     dashboard's own palette. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+
+    <path
+        android:fillColor="#1B1F1D"
+        android:pathData="M0,0h320v180h-320z" />
+
+    <path
+        android:fillColor="#E8A33D"
+        android:pathData="M140,72m-34,0a34,34 0,1 1,68 0a34,34 0,1 1,-68 0" />
+
+    <path
+        android:fillColor="#F2F1EC"
+        android:pathData="M128,132h82a26,26 0,0 0,0 -52a38,38 0,0 0,-72 10a21,21 0,0 0,-10 42z" />
+</vector>
