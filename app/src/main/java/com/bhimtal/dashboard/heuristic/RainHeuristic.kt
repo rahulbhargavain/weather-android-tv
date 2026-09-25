@@ -28,11 +28,10 @@ import kotlin.math.ln
  * SECOND REVISION added two more signals, from a station that only logs
  * temperature and humidity (no pressure, no dew point sensor):
  *
- *  3. RADAR ECHO NEAR THE STATION. The app was already stitching RainViewer
- *     tiles and marking your station's exact pixel location on the image --
- *     but never looked at what was actually under that marker. Now it does
- *     (see MainActivity's radar-sampling code): a colored (non-transparent)
- *     pixel near your marker means RainViewer's radar is detecting echo
+ *  3. RADAR ECHO NEAR THE STATION. MainActivity samples the RainViewer
+ *     tiles around your station's exact pixel location (see
+ *     fetchRadarEchoNearStation): a colored (non-transparent) pixel near
+ *     the station means RainViewer's radar is detecting echo
  *     right over your location, independent of any forecast model. HONEST
  *     CAVEAT: radar detects precipitation aloft, which can evaporate before
  *     reaching the ground (virga) -- common in drier air, and plausible in

@@ -1,13 +1,13 @@
 # Weather Dashboard for Android TV
 
-A single-screen Android TV dashboard showing live weather, a regional radar, and headlines from RSS sources.
+A single-screen Android TV dashboard showing live weather, the [Himalaya Nowcast Atlas](https://rahulbhargavain.github.io/himalaya-nowcast-atlas/), and headlines from two RSS sources.
 It fetches data directly from your Personal Weather Station (PWS) and Open-Meteo, combining them into a unified forecast using a custom heuristic.
 
 ## Features
 - **PWS Integration**: Shows live temp, humidity, and rainfall from your station.
-- **Radar Image**: Stitches 3x3 tiles from RainViewer to show regional radar.
-- **Smart Rain Heuristic**: Combines your station's current trend, Open-Meteo's forecast, and nearby radar echo into a single "is it raining / will it rain" prediction.
-- **News Grid**: Displays top headlines from configurable RSS sources.
+- **Himalaya Nowcast Atlas**: the atlas in TV mode (radar extrapolated 8 hours ahead with optical flow, pressure, snow line, airport reports, live fires), looping in a WebView. It is rebuilt every 2 hours by the [atlas repo](https://github.com/rahulbhargavain/himalaya-nowcast-atlas)'s own workflow; the app reloads it every 30 minutes or when you press Refresh.
+- **Smart Rain Heuristic**: Combines your station's current trend, Open-Meteo's forecast, and radar echo near the station (sampled from RainViewer tiles, not drawn) into a single "is it raining / will it rain" prediction.
+- **News**: Top headlines from two RSS sources (The New York Times and BBC News by default).
 
 ## Setup
 
